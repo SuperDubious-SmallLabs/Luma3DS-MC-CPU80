@@ -339,6 +339,11 @@ void setAppCpuTimeLimitAndSchedModeFromDescriptor(u64 titleId, u16 descriptor)
             to use core1, **EXCEPT** for an hardcoded set of titles.
     */
     u8 cpuTime = (u8)descriptor;
+
+    // for mc n3ds edition
+    if (titleId == 0x00040000001B8700ULL && cpuTime == (CPUTIME_MULTI_MASK | 30))
+        cpuTime = CPUTIME_MULTI_MASK | 80;
+
     assertSuccess(setAppCpuTimeLimit(0)); // remove preemption first.
 
     g_manager.cpuTimeBase = 0;
