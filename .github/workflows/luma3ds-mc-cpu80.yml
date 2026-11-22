@@ -1,0 +1,64 @@
+name: Luma3DS-MC-CPU80
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.sync.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/LumaTeam/Luma3DS.git
+          git fetch --tags upstream
+          latest=$(gh api repos/LumaTeam/Luma3DS/releases/latest --jq .tag_name)
+          base=$(git describe --tags --abbrev=0 HEAD)
+          if [ "$latest" != "$base" ]; then
+            git rebase --onto "$latest" "$base"
+            git push --force origin HEAD:master
+            git push origin "refs/tags/$latest"
+          fi
+          echo "tag=$latest" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: update
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm
+    steps:
+      - run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git g++ make python3 python3-venv python3-pip ca-certificates
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth 1 https://github.com/3DSGuy/Project_CTR.git /tmp/Project_CTR
+          make -C /tmp/Project_CTR/makerom deps
+          make -C /tmp/Project_CTR/makerom program
+          cp /tmp/Project_CTR/makerom/bin/makerom /usr/local/bin/
+          python3 -m venv /opt/firmtool
+          /opt/firmtool/bin/pip install git+https://github.com/TuxSH/firmtool.git
+          ln -sf /opt/firmtool/bin/firmtool /usr/local/bin/firmtool
+      - run: make -j"$(nproc)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Luma3DS-MC-CPU80-${{ needs.update.outputs.tag }}
+          path: boot.firm
